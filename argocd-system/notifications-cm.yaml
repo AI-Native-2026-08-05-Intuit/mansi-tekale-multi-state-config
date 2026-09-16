@@ -1,9 +1,13 @@
 # argocd-system/notifications-cm.yaml
-# Wires argocd-notifications-controller to Slack. The webhook URL is
-# held in the argocd-notifications-secret (created out-of-band with
-# kubectl create secret generic -- never committed to Git); this
-# ConfigMap declares only the triggers, templates, and the named
-# service that points at the secret.
+# Wires argocd-notifications-controller to Slack via a generic webhook
+# service (an Incoming Webhook URL, not a Bot Token) -- the cohort's
+# shared Slack app only exposes an Incoming Webhook for
+# #argocd-notifications, and Argo CD's `service.webhook` type posts
+# arbitrary JSON to any URL, so it fits without provisioning a Bot
+# Token. The URL is held in the argocd-notifications-secret (created
+# out-of-band with kubectl create secret generic -- never committed to
+# Git); this ConfigMap declares only the triggers, templates, and the
+# named service that points at the secret.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -11,8 +15,12 @@ metadata:
   namespace: argocd
 data:
   # ----- Where to deliver notifications -----
-  service.slack: |
-    token: $slack-token
+  service.webhook: |
+    slack:
+      url: $slack-webhook-url
+      headers:
+        - name: Content-Type
+          value: application/json
 
   # ----- Triggers (when to fire) -----
   trigger.on-sync-failed: |
@@ -32,43 +40,28 @@ data:
   # deployed when."
 
   # ----- Templates (how to render) -----
+  # The webhook service posts this body as-is to the Slack Incoming
+  # Webhook URL, so `text` here is Slack's own top-level message field.
   template.app-sync-failed: |
-    message: |
-      {{.app.metadata.name}} sync FAILED at {{.app.status.operationState.finishedAt}}.
-      Project:   {{.app.spec.project}}
-      Revision:  {{.app.status.operationState.syncResult.revision}}
-      Phase:     {{.app.status.operationState.phase}}
-      Message:   {{.app.status.operationState.message}}
-    slack:
-      attachments: |
-        [{
-          "title":   "{{.app.metadata.name}} sync failed",
-          "color":   "#E96D76",
-          "fields":  [
-            {"title": "Project",  "value": "{{.app.spec.project}}",  "short": true},
-            {"title": "Revision", "value": "{{.app.status.operationState.syncResult.revision}}", "short": true}
-          ]
-        }]
+    webhook:
+      slack:
+        method: POST
+        body: |
+          {
+            "text": "*{{.app.metadata.name}}* sync FAILED at {{.app.status.operationState.finishedAt}}.\nProject: {{.app.spec.project}}\nRevision: {{.app.status.operationState.syncResult.revision}}\nPhase: {{.app.status.operationState.phase}}\nMessage: {{.app.status.operationState.message}}"
+          }
 
   template.app-health-degraded: |
-    message: |
-      {{.app.metadata.name}} health is DEGRADED.
-      Project:   {{.app.spec.project}}
-      Status:    {{.app.status.health.status}}
-      Message:   {{.app.status.health.message}}
-    slack:
-      attachments: |
-        [{
-          "title":   "{{.app.metadata.name}} health degraded",
-          "color":   "#F2C744",
-          "fields":  [
-            {"title": "Status",   "value": "{{.app.status.health.status}}",  "short": true},
-            {"title": "Message",  "value": "{{.app.status.health.message}}", "short": false}
-          ]
-        }]
+    webhook:
+      slack:
+        method: POST
+        body: |
+          {
+            "text": "*{{.app.metadata.name}}* health is DEGRADED.\nProject: {{.app.spec.project}}\nStatus: {{.app.status.health.status}}\nMessage: {{.app.status.health.message}}"
+          }
 
   # ----- Default subscriptions -----
   subscriptions: |
-    - recipients: [slack:multistate-deploys]
+    - recipients: [webhook:slack]
       triggers:   [on-sync-failed, on-health-degraded]
       selector:   "team=multistate"
