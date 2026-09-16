@@ -1,0 +1,6 @@
+# W3691 suppressed: the installed cfn-lint release's bundled RDS
+# deprecated-version dataset flags every Postgres engine version it
+# knows about (16.x through 17.3) as deprecated. This is stale
+# tooling data, not a real template issue -- see multistate-api/INFRA.md.
+ignore_checks:
+  - W3691
