@@ -286,6 +286,35 @@ Resources:
     Properties:
       LogGroupName: !Sub "/multistate/${EnvName}/vpc-flow-logs"
       RetentionInDays: 90
+      KmsKeyId: !GetAtt FlowLogKmsKey.Arn
+
+  FlowLogKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "multistate ${EnvName} VPC flow log encryption key"
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAccountAdmin
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: AllowCloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: !Sub "logs.${AWS::Region}.amazonaws.com"
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:Describe*
+            Resource: "*"
+            Condition:
+              ArnLike:
+                "kms:EncryptionContext:aws:logs:arn": !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
 
   FlowLogRole:
     Type: AWS::IAM::Role

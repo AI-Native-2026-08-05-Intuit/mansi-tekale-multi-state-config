@@ -91,8 +91,12 @@ Fixed:
   reject on a bucket with `OwnershipControls: BucketOwnerEnforced`).
 - **W60** (`Vpc`) — added a VPC Flow Log to a CloudWatch Logs group with a
   dedicated IAM delivery role.
+- **W84** (`FlowLogGroup`) — added a dedicated KMS key (`FlowLogKmsKey`) so the
+  flow-log CloudWatch Logs group encrypts with a customer-managed key instead of
+  the AWS-managed default.
 
-Accepted as tradeoffs, not fixed:
+Accepted as tradeoffs, listed in [`.cfn-nag-deny-list.yaml`](../.cfn-nag-deny-list.yaml)
+so the CI job stays green without silently ignoring anything undocumented:
 - **W28** on `CfnDeployRole` and `MultistateAppSecurityGroup` — both have explicit
   names (`RoleName: multistate-api-cfn-deploy`, `GroupName: multistate-${EnvName}-app-sg`)
   that other stacks/workflows depend on by exact name (the GitHub Actions OIDC trust
@@ -104,9 +108,20 @@ Accepted as tradeoffs, not fixed:
 - **W33** on the public subnets — `MapPublicIpOnLaunch: true` is the deliverable's
   own spec for what makes a subnet "public"; instances launched there need a public
   IP by design.
-- **W5** on `MultistateAppSecurityGroup`'s egress — 443-to-`0.0.0.0/0` is flagged
-  because ECR, STS, and Secrets Manager don't have a single fixed IP range reachable
-  without VPC endpoints, which are out of scope for this deliverable.
+- **W5** on `MultistateAppSecurityGroup`'s and `DbSecurityGroup`'s egress —
+  443-to-`0.0.0.0/0` is flagged because ECR, STS, and Secrets Manager don't have a
+  single fixed IP range reachable without VPC endpoints, which are out of scope for
+  this deliverable.
+- **W35** on `AccessLogBucket` and `ArtifactAccessLogBucket` — these are the log
+  *destination* buckets; enabling logging on a log bucket would create a
+  self-referential logging loop. `BootstrapBucket` and `MultistateArtifactsBucket`
+  (the buckets that actually hold application data) are not in this deny-list and
+  are fixed for real, above.
+
+`cfn-nag`'s deny-list is rule-ID-scoped, not resource-scoped, so `--deny-list-path`
+suppresses a rule everywhere it would otherwise fire rather than per-resource; each
+entry above is deliberately narrow enough that suppressing the rule id doesn't hide
+an unrelated real finding.
 
 ## Shared-role trust-policy conflict (cohort account)
 
