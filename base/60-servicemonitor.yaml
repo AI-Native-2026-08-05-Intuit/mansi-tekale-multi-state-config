@@ -1,0 +1,23 @@
+# Requires the Prometheus Operator CRDs (ServiceMonitor) in-cluster.
+# Not installed by this W6D2 deliverable's k3d cluster -- expect this
+# resource to fail to sync until the Operator (from W5D5) is present.
+# Kept here because it is in the AppProject's namespaceResourceWhitelist
+# and ships with the W5D3 manifest set.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: multistate-api
+  labels:
+    release: kube-prometheus-stack
+    app.kubernetes.io/name: multistate-api
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: multistate-api
+  namespaceSelector:
+    matchNames: [multistate-dev]
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
+      scrapeTimeout: 10s
