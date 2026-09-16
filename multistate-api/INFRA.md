@@ -69,6 +69,58 @@ property no longer matches the template — reconcile by either updating the tem
 to match (if the console edit was intentional) or reverting the console edit (if it
 was not) and re-running detection to confirm `IN_SYNC`.
 
+## cfn-nag findings and accepted tradeoffs
+
+`cfn_nag_scan --input-path cfn/ --fail-on-warnings` was run for real in CI (the
+`cfn-validate.yml` `cfn-nag` job) after fixing a local Ruby-toolchain issue on the
+authoring machine (stale Ruby 2.6 + TLS interception blocked `gem install` locally;
+the CI runner's fresh Ruby has neither problem).
+
+Fixed:
+- **F1000** (`DbSecurityGroup` in `multistate-app-dev.yaml`) — had no explicit
+  egress rule, which defaults to allow-all-outbound. Added an explicit 443-only
+  egress rule.
+- **W77** (`DbMasterSecret`) — added `KmsKeyId: alias/aws/secretsmanager` so the
+  secret's encryption key is explicit rather than the account default.
+- **W28** (`DbInstance`) — dropped the explicit `DBInstanceIdentifier` so a future
+  rename doesn't force a replacement.
+- **W35** (`BootstrapBucket`, `MultistateArtifactsBucket`) — added a dedicated
+  access-log destination bucket + `logging.s3.amazonaws.com` bucket policy for
+  each hardened bucket (the modern replacement for the legacy
+  `AccessControl: LogDeliveryWrite` ACL, which cfn-lint's `E3045`/`W3045` rules
+  reject on a bucket with `OwnershipControls: BucketOwnerEnforced`).
+- **W60** (`Vpc`) — added a VPC Flow Log to a CloudWatch Logs group with a
+  dedicated IAM delivery role.
+
+Accepted as tradeoffs, not fixed:
+- **W28** on `CfnDeployRole` and `MultistateAppSecurityGroup` — both have explicit
+  names (`RoleName: multistate-api-cfn-deploy`, `GroupName: multistate-${EnvName}-app-sg`)
+  that other stacks/workflows depend on by exact name (the GitHub Actions OIDC trust
+  policy references this role by name; `multistate-app-dev` could in principle
+  `!ImportValue` the SG id instead, but the explicit name is intentional for
+  console discoverability). Removing the name would let a future property-change
+  update silently rename the resource instead of blocking, which is the tradeoff
+  documented here rather than hidden.
+- **W33** on the public subnets — `MapPublicIpOnLaunch: true` is the deliverable's
+  own spec for what makes a subnet "public"; instances launched there need a public
+  IP by design.
+- **W5** on `MultistateAppSecurityGroup`'s egress — 443-to-`0.0.0.0/0` is flagged
+  because ECR, STS, and Secrets Manager don't have a single fixed IP range reachable
+  without VPC endpoints, which are out of scope for this deliverable.
+
+## Shared-role trust-policy conflict (cohort account)
+
+Mid-deliverable, a teammate's PR/session overwrote `multistate-api-cfn-deploy`'s trust
+policy to scope `StringLike` on `token.actions.githubusercontent.com:sub` to only
+their own repo, which silently locked every other cohort member's `validate-template`
+CI job out of assuming the role (the `sub` claim no longer matched). Fixed by editing
+the trust policy to list both repos' `ref:refs/heads/main` and `pull_request` entries
+side by side, rather than either person overwriting the other's entry. This is a
+structural risk of a shared IAM role across a cohort sharing one AWS account — worth
+raising with the ES/instructor as a cohort-wide fix (e.g. one role per repo, or a
+wildcard `sub` pattern scoped to the shared org) rather than each person patching the
+list reactively when they get locked out.
+
 ## Secrets Manager over `NoEcho` parameters
 
 `multistate-app-dev` resolves the RDS master password via a Secrets Manager dynamic
@@ -107,9 +159,12 @@ RDS deprecated-engine-version dataset flags every PostgreSQL version it knows ab
 release, not a real problem with the template's chosen engine version. Documented here
 rather than silently worked around so a future reader isn't confused by the suppression.
 
-`cfn_nag_scan` was not run in this environment (`cfn-nag` requires a Ruby/gem
-toolchain not installed here); it runs for real in the `cfn-validate.yml` CI job on
-every PR.
+`cfn_nag_scan` was not run on the authoring machine (stale Ruby 2.6 plus a corporate
+TLS-interception proxy blocked `gem install` locally). It ran for real in the
+`cfn-validate.yml` CI job on the PR, which surfaced one real `FAIL` (F1000, a missing
+egress rule) and eleven `WARN`s — all fixed except three intentionally accepted
+tradeoffs. See "cfn-nag findings and accepted tradeoffs" below for the fix-by-fix
+breakdown.
 
 ## cfn-author Claude Skill audit
 
@@ -148,6 +203,6 @@ This PR ships four templates that pass local `cfn-lint` validation and the
 - [ ] Run an `UPDATE` ChangeSet against `multistate-network-dev` (e.g. rename a tag);
       confirm `describe-change-set` shows `Replacement: False` on every modified
       resource
-- [ ] Run `cfn_nag_scan --input-path cfn/ --fail-on-warnings` for real
+- [x] Run `cfn_nag_scan --input-path cfn/ --fail-on-warnings` for real — done via CI
 - [ ] Run the `cfn-author` Claude Skill against a scratch branch and diff its output
       against these hand-authored templates
