@@ -1,18 +1,24 @@
 # Rules intentionally accepted as tradeoffs; each is documented under
 # "cfn-nag findings and accepted tradeoffs" in multistate-api/INFRA.md.
-# Do not add a rule here without a matching entry in that doc.
-DenyList:
-  # W28: CfnDeployRole and MultistateAppSecurityGroup are referenced by
-  # exact name from the GitHub Actions OIDC trust policy and from other
-  # tooling; a stable name is intentional despite blocking some updates.
-  - W28
-  # W33: MapPublicIpOnLaunch: true on the public subnets is the
-  # deliverable's own spec for what makes a subnet "public".
-  - W33
-  # W5: 443-only egress to 0.0.0.0/0 is flagged because ECR/STS/Secrets
-  # Manager have no single fixed IP range without VPC endpoints
-  # (out of scope for this deliverable).
-  - W5
-  # W35 on the access-log destination buckets themselves: enabling
-  # logging on a log bucket would be a self-referential logging loop.
-  - W35
+# Do not add an entry here without a matching entry in that doc.
+RulesToSuppress:
+  - id: W28
+    reason: >-
+      CfnDeployRole and MultistateAppSecurityGroup are referenced by exact
+      name from the GitHub Actions OIDC trust policy and other tooling; a
+      stable name is intentional despite blocking some updates.
+  - id: W33
+    reason: >-
+      MapPublicIpOnLaunch: true on the public subnets is the deliverable's
+      own spec for what makes a subnet "public".
+  - id: W5
+    reason: >-
+      443-only egress to 0.0.0.0/0 is flagged because ECR/STS/Secrets
+      Manager have no single fixed IP range without VPC endpoints
+      (out of scope for this deliverable).
+  - id: W35
+    reason: >-
+      Applies to the access-log destination buckets themselves; enabling
+      logging on a log bucket would be a self-referential logging loop.
+      The primary data buckets (BootstrapBucket, MultistateArtifactsBucket)
+      have real logging configured and are not covered by this suppression.
