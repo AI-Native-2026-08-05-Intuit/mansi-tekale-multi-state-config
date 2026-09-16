@@ -45,6 +45,7 @@ Resources:
     Properties:
       Name: multistate/dev/db-master
       Description: !Sub "multistate DB master credentials, ${EnvName}."
+      KmsKeyId: alias/aws/secretsmanager
       GenerateSecretString:
         SecretStringTemplate: '{"username": "multistate_master"}'
         GenerateStringKey: password
@@ -86,6 +87,12 @@ Resources:
           SourceSecurityGroupId: !ImportValue
             Fn::Sub: "${NetworkStackName}-AppSgId"
           Description: Postgres from app SG only.
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS egress only (no implicit allow-all).
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-db-sg"
@@ -99,7 +106,6 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      DBInstanceIdentifier: !Sub "multistate-${EnvName}"
       Engine: postgres
       EngineVersion: "17.3"
       DBInstanceClass: !Ref DbInstanceClass

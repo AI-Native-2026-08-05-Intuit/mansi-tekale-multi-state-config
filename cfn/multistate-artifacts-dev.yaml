@@ -49,11 +49,69 @@ Resources:
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
+      LoggingConfiguration:
+        DestinationBucketName: !Ref ArtifactAccessLogBucket
+        LogFilePrefix: artifacts-access-logs/
       Tags:
         - Key: Env
           Value: !Ref EnvName
         - Key: Project
           Value: multistate
+
+  # --- Access-log destination bucket for MultistateArtifactsBucket.
+  # Not itself given a LoggingConfiguration (avoids a self-referential
+  # log loop).
+  ArtifactAccessLogBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "uptimecrew-multistate-artifacts-logs-dev-${AWS::AccountId}"
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/aws/s3
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-logs
+            Status: Enabled
+            ExpirationInDays: 90
+      Tags:
+        - Key: Env
+          Value: !Ref EnvName
+        - Key: Project
+          Value: multistate
+
+  # --- Grants the S3 server-access-logging service principal write
+  # access, replacing the legacy AccessControl: LogDeliveryWrite ACL.
+  ArtifactAccessLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactAccessLogBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: S3ServerAccessLogsPolicy
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${ArtifactAccessLogBucket.Arn}/artifacts-access-logs/*"
+            Condition:
+              ArnLike:
+                "aws:SourceArn": !GetAtt MultistateArtifactsBucket.Arn
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
 
   ArtifactBucketPolicy:
     Type: AWS::S3::BucketPolicy
