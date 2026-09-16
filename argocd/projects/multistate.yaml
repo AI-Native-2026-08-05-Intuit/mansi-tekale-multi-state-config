@@ -24,11 +24,16 @@ spec:
 
   # Cluster-scoped resources: the app team has NO business creating
   # ClusterRoles, CRDs, or PersistentVolumes. Empty whitelist = full deny.
-  clusterResourceWhitelist: []
+  # Namespace is cluster-scoped in Kubernetes (unlike the resources
+  # below), so it must be allowed here, not in namespaceResourceWhitelist
+  # -- Argo CD rejects "SyncFailed: resource :Namespace is not permitted
+  # in project multistate" otherwise, even though CreateNamespace=true is
+  # set on the Application. Everything else stays cluster-scope-denied.
+  clusterResourceWhitelist:
+    - {group: "", kind: Namespace}
 
   # Namespace-scoped resources: only the kinds the W5D3 manifests use.
   namespaceResourceWhitelist:
-    - {group: "",                    kind: Namespace}
     - {group: "",                    kind: Service}
     - {group: "",                    kind: ConfigMap}
     - {group: "",                    kind: Secret}
