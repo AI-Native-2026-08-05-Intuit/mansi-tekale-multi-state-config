@@ -283,6 +283,8 @@ Resources:
   # network forensics and compliance audit trails.
   FlowLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub "/multistate/${EnvName}/vpc-flow-logs"
       RetentionInDays: 90
@@ -290,15 +292,18 @@ Resources:
 
   FlowLogKmsKey:
     Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Description: !Sub "multistate ${EnvName} VPC flow log encryption key"
+      EnableKeyRotation: true
       KeyPolicy:
         Version: "2012-10-17"
         Statement:
           - Sid: AllowAccountAdmin
             Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
             Action: "kms:*"
             Resource: "*"
           - Sid: AllowCloudWatchLogs
@@ -314,7 +319,7 @@ Resources:
             Resource: "*"
             Condition:
               ArnLike:
-                "kms:EncryptionContext:aws:logs:arn": !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+                "kms:EncryptionContext:aws:logs:arn": !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"
 
   FlowLogRole:
     Type: AWS::IAM::Role
