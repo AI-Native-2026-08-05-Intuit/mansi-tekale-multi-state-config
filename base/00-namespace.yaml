@@ -1,0 +1,9 @@
+# Namespace only. ResourceQuota + LimitRange from the W5D3 manifest are
+# platform-owned (see AppProject namespaceResourceBlacklist) and are not
+# templated here -- they are provisioned out-of-band by the platform team.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: multistate-dev
+  labels:
+    app.kubernetes.io/name: multistate-dev

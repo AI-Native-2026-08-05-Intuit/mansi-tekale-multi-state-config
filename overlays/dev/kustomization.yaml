@@ -1,0 +1,42 @@
+# overlays/dev/kustomization.yaml
+# Smallest viable patch over the W5D3 base. Same shape repeats at
+# overlays/staging/ and overlays/prod/ with different namespace,
+# replica, and ConfigMap patches.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: multistate-dev
+
+images:
+  - name: uptimecrew/multistate-api
+    newName: uptimecrew/multistate-api
+    newTag: "0.1.0"
+
+replicas:
+  - name: multistate-api
+    count: 1
+
+patches:
+  # Namespace lands in wave -1 (before Deployment/Service) so a
+  # first-time sync to a brand-new namespace converges in one pass.
+  - target:
+      kind: Namespace
+      name: multistate-dev
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "-1"
+  - target:
+      kind: ConfigMap
+      name: multistate-api-config
+    patch: |-
+      - op: replace
+        path: /data/SPRING_PROFILES_ACTIVE
+        value: dev
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: DEBUG

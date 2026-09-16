@@ -1,0 +1,81 @@
+# argocd/projects/multistate.yaml
+# AppProject scoping the multistate capstone team. Every Application in
+# this repo has spec.project: multistate -- never "default".
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: multistate
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: multistate-api capstone -- GitOps overlays + observability
+
+  sourceRepos:
+    - https://github.com/AI-Native-2026-08-05-Intuit/mansi-tekale-multi-state-config.git
+
+  destinations:
+    - server:    https://kubernetes.default.svc
+      namespace: multistate-dev
+    - server:    https://kubernetes.default.svc
+      namespace: multistate-staging
+    - server:    https://kubernetes.default.svc
+      namespace: multistate-prod
+
+  # Cluster-scoped resources: the app team has NO business creating
+  # ClusterRoles, CRDs, or PersistentVolumes. Empty whitelist = full deny.
+  # Namespace is cluster-scoped in Kubernetes (unlike the resources
+  # below), so it must be allowed here, not in namespaceResourceWhitelist
+  # -- Argo CD rejects "SyncFailed: resource :Namespace is not permitted
+  # in project multistate" otherwise, even though CreateNamespace=true is
+  # set on the Application. Everything else stays cluster-scope-denied.
+  clusterResourceWhitelist:
+    - {group: "", kind: Namespace}
+
+  # Namespace-scoped resources: only the kinds the W5D3 manifests use.
+  namespaceResourceWhitelist:
+    - {group: "",                    kind: Service}
+    - {group: "",                    kind: ConfigMap}
+    - {group: "",                    kind: Secret}
+    - {group: "",                    kind: ServiceAccount}
+    - {group: apps,                  kind: Deployment}
+    - {group: autoscaling,           kind: HorizontalPodAutoscaler}
+    - {group: policy,                kind: PodDisruptionBudget}
+    - {group: networking.k8s.io,     kind: NetworkPolicy}
+    - {group: monitoring.coreos.com, kind: ServiceMonitor}
+    - {group: monitoring.coreos.com, kind: PrometheusRule}
+
+  # Platform-owned quota knobs -- explicitly blocked.
+  namespaceResourceBlacklist:
+    - {group: "", kind: ResourceQuota}
+    - {group: "", kind: LimitRange}
+
+  # Deny auto-sync to prod over the weekend; manual sync still allowed.
+  syncWindows:
+    - kind: deny
+      schedule: "0 17 * * 5"        # Friday 17:00
+      duration: 60h                 # through Monday 05:00
+      applications:
+        - "multistate-api-prod"
+      manualSync: true
+
+  roles:
+    - name: developers
+      description: Read everything; sync dev and staging only.
+      policies:
+        - p, proj:multistate:developers, applications, get,    multistate/*,                     allow
+        - p, proj:multistate:developers, applications, sync,   multistate/multistate-api-dev,     allow
+        - p, proj:multistate:developers, applications, sync,   multistate/multistate-api-staging, allow
+        - p, proj:multistate:developers, applications, delete, multistate/*,                     deny
+        - p, proj:multistate:developers, logs,         get,    multistate/*,                     allow
+      groups:
+        - uptimecrew:multistate-engineers
+    - name: releasers
+      description: Full sync including prod. Cannot delete Applications.
+      policies:
+        - p, proj:multistate:releasers, applications, get,      multistate/*, allow
+        - p, proj:multistate:releasers, applications, sync,     multistate/*, allow
+        - p, proj:multistate:releasers, applications, action/*, multistate/*, allow
+        - p, proj:multistate:releasers, applications, delete,   multistate/*, deny
+      groups:
+        - uptimecrew:multistate-engineers-releasers

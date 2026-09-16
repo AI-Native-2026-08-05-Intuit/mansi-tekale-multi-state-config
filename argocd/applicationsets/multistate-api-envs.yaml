@@ -1,0 +1,81 @@
+# argocd/applicationsets/multistate-api-envs.yaml
+# Templates one Application per env. The list generator drives
+# (env, overlay, namespace, wave) tuples; the inner clusters generator
+# scopes the fleet to the registered local k3d cluster. Adding a new
+# env (e.g. canary) is a one-line entry in the elements list.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: multistate-api-envs
+  namespace: argocd
+spec:
+  # If an env falls out of the matrix, KEEP the existing Application +
+  # workload running. A human re-reviews before any teardown -- the
+  # default (delete) is the wrong default for prod.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+
+  generators:
+    - matrix:
+        generators:
+          # Inner generator A: explicit env list.
+          - list:
+              elements:
+                - env: dev
+                  overlay: overlays/dev
+                  namespace: multistate-dev
+                  wave: "0"
+                - env: staging
+                  overlay: overlays/staging
+                  namespace: multistate-staging
+                  wave: "1"
+                - env: prod
+                  overlay: overlays/prod
+                  namespace: multistate-prod
+                  wave: "2"
+          # Inner generator B: every cluster tagged tier=workload. For
+          # the local k3d cluster, the registered cluster Secret is
+          # labelled with this at install time (see GITOPS.md).
+          - clusters:
+              selector:
+                matchLabels:
+                  uptimecrew.example.internal/tier: workload
+
+  template:
+    metadata:
+      name: multistate-api-{{env}}
+      namespace: argocd
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+      annotations:
+        # Cross-env promotion order: dev syncs first, staging second,
+        # prod third. Per-resource sync-wave ordering (Namespace before
+        # Deployment) lives in each Kustomize overlay instead.
+        argocd.argoproj.io/sync-wave: "{{wave}}"
+      labels:
+        env:  "{{env}}"
+        team: multistate
+    spec:
+      project: multistate
+      source:
+        repoURL:        https://github.com/AI-Native-2026-08-05-Intuit/mansi-tekale-multi-state-config.git
+        path:           "{{overlay}}"
+        targetRevision: main
+      destination:
+        server:    "{{server}}"
+        namespace: "{{namespace}}"
+      syncPolicy:
+        automated:
+          prune:    true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+        retry:
+          limit: 5
+          backoff:
+            duration:    10s
+            factor:      2
+            maxDuration: 3m
