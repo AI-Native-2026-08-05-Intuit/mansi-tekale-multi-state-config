@@ -94,8 +94,6 @@ Resources:
             NoncurrentVersionExpiration:
               NoncurrentDays: !Ref RetentionDays
       Tags:
-        - Key: Env
-          Value: !Ref EnvName
         - Key: Project
           Value: multistate
         - Key: user
@@ -209,8 +207,6 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/multistate-*"
       Tags:
-        - Key: Env
-          Value: !Ref EnvName
         - Key: Project
           Value: multistate
         - Key: user

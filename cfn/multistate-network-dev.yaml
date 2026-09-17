@@ -300,7 +300,7 @@ Resources:
   MultistateAppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub "multistate-${EnvName}-app-sg"
+      GroupName: !Sub "multistate-mansi-${EnvName}-app-sg"
       GroupDescription: App SG; ingress 8080 from VPC only; egress 443 only.
       VpcId: !Ref Vpc
       SecurityGroupIngress:
@@ -330,7 +330,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: !Sub "/multistate/${EnvName}/vpc-flow-logs"
+      LogGroupName: !Sub "/multistate/mansi/${EnvName}/vpc-flow-logs"
       RetentionInDays: 90
       KmsKeyId: !GetAtt FlowLogKmsKey.Arn
 

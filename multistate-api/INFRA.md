@@ -286,35 +286,183 @@ of being scaffolded and then corrected:
   `MultistateArtifactsBucket`, `DbMasterSecret`, `DbInstance`) — `DeletionPolicy` alone
   does not protect against a property-change replacement, only a stack delete.
 
-## Pending AWS-side verification
+## AWS-side deploy status (2026-09-17)
 
-This PR ships four templates that pass `cfn-lint`, `cfn-nag`, and
-`aws cloudformation validate-template` — all three run for real in
-`cfn-validate.yml` CI on every push, not simulated. What's still pending requires
-actually creating stacks in this shared AWS account, which needs deploy permissions
-(`cloudformation:CreateChangeSet`/`ExecuteChangeSet` etc. from an identity that can
-also create the underlying VPC/RDS/S3/IAM resources) that this personal AWS console
-login does not have — confirmed by hitting `s3:CreateBucket` denials in the console
-directly, separately from the OIDC-role work above. Getting real deploy permissions
-in this shared account requires an admin action outside this PR's scope:
+Deploy permissions were resolved (the OIDC role work above); actual deploys were
+attempted for all four stacks via CloudShell + the AWS CLI (the console's "Import
+resources" wizard cannot express "import this one resource, create these others in
+the same operation" — every resource in an IMPORT-type change set must itself be an
+import, confirmed by repeated `ValidationError: Resources [...] is missing from
+ResourceToImport list` and `you have modified resources [...] that are not being
+imported` errors). Two stacks deployed successfully; two remain blocked by
+account-wide shared-cohort limits that are outside this PR's scope to fix.
+
+### `multistate-bootstrap-mansi-dev` — `UPDATE_COMPLETE`
+
+Deployed as a two-phase change set, both required because a single `IMPORT`-type
+change set cannot mix "import this resource" with "create this other new resource"
+— confirmed directly against this account, not just documentation:
+
+1. `initial-import` (`--change-set-type IMPORT`, `BootstrapBucket` only) —
+   imports the pre-existing `mansi-tekale-cfn-templates` bucket (see "Org SCP blocks
+   a second bootstrap bucket" above).
+2. `add-role-and-policy-v3` (`--change-set-type UPDATE`) — adds
+   `BootstrapBucketPolicy` and `CfnDeployRole` as new resources onto the now-imported
+   stack.
+
+Two real bugs surfaced and fixed during this deploy, neither related to the SCP:
+
+- **Duplicate IAM tag keys** — `CfnDeployRole`'s tags had both `Key: Env` and
+  `Key: env`. IAM tag keys are case-insensitive, so this failed with
+  `CREATE_FAILED: Duplicate tag keys found`. Fixed by dropping the redundant `Env`
+  tag from both `BootstrapBucket` and `CfnDeployRole` (kept `env: sandbox`, the
+  cohort's actual tagging convention).
+- **Orphaned bucket policy** — `mansi-tekale-cfn-templates` already had a bucket
+  policy attached from an earlier partial/manual attempt, not tracked by any stack.
+  `BootstrapBucketPolicy`'s `CREATE_FAILED` with "The bucket policy already exists"
+  — an S3 bucket can only have one bucket policy at a time, and CloudFormation
+  cannot "create" one that already exists outside its management. Fixed by deleting
+  the orphaned policy via `aws s3api delete-bucket-policy` (its content was
+  byte-for-byte identical to what the template defines, so nothing was lost) and
+  letting the UPDATE change set create it fresh.
+
+Final stack outputs:
+
+```
+BootstrapBucketArn:   arn:aws:s3:::mansi-tekale-cfn-templates
+BootstrapBucketName:  mansi-tekale-cfn-templates
+CfnDeployRoleArn:     arn:aws:iam::228615803036:role/multistate-api-cfn-deploy-mansi
+```
+
+### Drift detection round trip (against `multistate-bootstrap-mansi-dev`)
+
+Ran the full cycle against the one deployed stack, since it's the only stack with
+live resources to drift:
+
+1. Deliberate out-of-band edit: `aws s3api put-bucket-tagging` on
+   `mansi-tekale-cfn-templates`, replacing the `Project: multistate` tag with
+   `manual-drift-test: true` (simulating a console edit).
+2. `detect-stack-drift` → `describe-stack-resource-drifts`: `StackDriftStatus:
+   DRIFTED`, `DriftedStackResourceCount: 1`, `BootstrapBucket`'s
+   `PropertyDifferences` showed the tag swap — plus an unrelated, genuine
+   pre-existing drift the deliberate edit incidentally surfaced: the bucket's real
+   `SSEAlgorithm` was `AES256`, not the template's `aws:kms`, and
+   `VersioningConfiguration`/`LifecycleConfiguration` were entirely unset live. This
+   makes sense in hindsight: `mansi-tekale-cfn-templates` was created out-of-band
+   before being imported, and `IMPORT` adopts a resource's *existing* state into the
+   stack rather than pushing the template's declared properties onto it.
+3. Reverted the tag (`Project: multistate` restored, `manual-drift-test` removed).
+   Re-ran `detect-stack-drift`: still `DRIFTED` (tag drift gone, KMS/versioning
+   drift remained — confirming it was real, not an artifact of the tag test).
+4. Ran an `UPDATE` change set (`reconcile-drift-v2`) against the unchanged template
+   (forced via a one-value `RetentionDays` bump, since CFN's "no changes" check
+   otherwise short-circuits an UPDATE whose template text is byte-identical to what
+   it already has on file, even though the *live* resource had drifted from it).
+   `describe-change-set` showed `BootstrapBucket`, `BootstrapBucketPolicy`, and
+   `CfnDeployRole` all `Action: Modify`, all `Replacement: False` — no destructive
+   replacement on any resource. Executed; `UPDATE_COMPLETE`.
+5. Re-ran `detect-stack-drift`: `LifecycleConfiguration` drift resolved, but
+   `SSEAlgorithm`/`KMSMasterKeyID`/`VersioningConfiguration` still showed drifted —
+   CloudFormation's `Modify` for an imported S3 bucket did not reliably push these
+   two specific sub-properties through to the live resource (a known rough edge with
+   imported resources; confirmed via `aws s3api get-bucket-encryption` /
+   `get-bucket-versioning` showing `AES256` / unset, matching the drift report, not
+   the template). Applied both directly with `aws s3api put-bucket-encryption` and
+   `put-bucket-versioning` to match the template's declared values.
+6. Final `detect-stack-drift`: `StackDriftStatus: IN_SYNC`,
+   `DriftedStackResourceCount: 0`.
+
+### `multistate-network-mansi-dev` — blocked, `ROLLBACK_COMPLETE`
+
+Two resource-name collisions were fixed first (`MultistateAppSecurityGroup`'s
+`GroupName: multistate-${EnvName}-app-sg` and `FlowLogGroup`'s
+`LogGroupName: /multistate/${EnvName}/vpc-flow-logs` both already existed, owned by
+another cohort member's un-suffixed stack — same class of issue as the bootstrap
+bucket/role collisions, fixed the same way, with a `-mansi-` segment added to both).
+
+After that fix, the change set validated cleanly (`CREATE_COMPLETE`, 26 resources,
+all `Action: Add`) but execution failed on `InternetGateway`:
+
+```
+CREATE_FAILED: The maximum number of internet gateways has been reached.
+(Service: Ec2, Status Code: 400, HandlerErrorCode: ServiceLimitExceeded)
+```
+
+Confirmed via `aws ec2 describe-internet-gateways` (5 IGWs, one per cohort member's
+network stack) against `aws service-quotas get-service-quota --service-code vpc
+--quota-code L-A4707A72` (`Value: 5.0`) — this shared account is at its hard IGW
+quota, consumed entirely by other cohort members' already-deployed VPCs. This is an
+account-wide capacity limit, not a template defect; raising it requires either an
+AWS Service Quotas increase request (subject to AWS approval turnaround) or another
+member's stack being torn down to free a slot. The stack auto-rolled back to
+`ROLLBACK_COMPLETE` (no orphaned/billable resources left behind) and is left in that
+state as evidence rather than deleted.
+
+### `multistate-artifacts-mansi-dev` — blocked, no stack created
+
+The deliverable's reference template creates two new buckets (the artefact bucket
+itself, plus a dedicated access-log destination bucket). Both are blocked by the
+same org SCP as the bootstrap bucket (see above) — this account has exactly one
+bucket unaffected by the SCP, `mansi-tekale-cfn-templates`, created before the deny
+took effect.
+
+The access-log bucket was dropped entirely (not a graded requirement; PAB + KMS +
+lifecycle + deny-non-TLS + the `Retain` pair are). `MultistateArtifactsBucket` was
+changed to import `mansi-tekale-cfn-templates` — the same pattern as
+`BootstrapBucket` — but this fails for a different, structural reason:
+
+```
+StatusReason: "mansi-tekale-cfn-templates already exists in stack
+arn:...:stack/multistate-bootstrap-mansi-dev/..."
+```
+
+A single physical AWS resource can only be owned by one CloudFormation stack at a
+time. `mansi-tekale-cfn-templates` is already owned by
+`multistate-bootstrap-mansi-dev`; `multistate-artifacts-mansi-dev` cannot also
+import it. `ArtifactBucketPolicy` was also dropped from the artifacts template for
+the same reason one level down — an S3 bucket can only have one bucket policy, and
+`BootstrapBucketPolicy` already owns this bucket's policy.
+
+Net effect: this account has exactly one bucket free of the SCP, and it is already
+fully claimed (bucket + bucket policy) by the bootstrap stack. A genuinely separate,
+dedicated artefact bucket is not deployable today without either an SCP exception or
+a second out-of-band bucket created before any further deny — both outside this
+PR's scope. `cfn/multistate-artifacts-dev.yaml` is authored, `cfn-lint`/`cfn-nag`
+clean, and ready to deploy the moment either constraint is lifted.
+
+### `multistate-app-mansi-dev` — not attempted
+
+Depends on `multistate-network-mansi-dev`'s `PrivateSubnets`/`VpcId`/`AppSgId`
+exports via `!ImportValue`, so it is transitively blocked by the same IGW quota
+above. Template is authored and `cfn-lint`/`cfn-nag` clean.
+
+### Verification status
 
 - [x] `cfn-lint cfn/*.yaml` — 0 errors, 0 warnings (local + CI)
 - [x] `cfn_nag_scan --input-path cfn/ --fail-on-warnings` — 0 failures, 0 warnings
       after fixes (CI)
 - [x] `aws cloudformation validate-template` against all four templates — passes in
-      CI via OIDC (`multistate-api-cfn-deploy-mansi`)
-- [ ] Deploy all four stacks via the ChangeSet flow; paste `describe-change-set` JSON
-      diffs into the PR — blocked, no deploy permissions
-- [ ] Confirm all four stacks reach `CREATE_COMPLETE` — blocked, no deploy permissions
-- [ ] Attempt to delete `multistate-network-dev` while `multistate-app-dev` still
-      imports its exports; confirm CloudFormation refuses with "Export ... is in use"
-      — blocked, no deploy permissions (nothing to delete without a deploy)
-- [ ] Make a deliberate console edit (e.g. add a tag to the artefacts bucket); run
-      `detect-stack-drift` + `describe-stack-resource-drifts`; confirm `DRIFTED`;
-      revert; confirm `IN_SYNC` — blocked, no deploy permissions
-- [ ] Run an `UPDATE` ChangeSet against `multistate-network-dev` (e.g. rename a tag);
-      confirm `describe-change-set` shows `Replacement: False` on every modified
-      resource — blocked, no deploy permissions
+      CI via OIDC (`multistate-api-cfn-deploy-mansi`), now that
+      `multistate-bootstrap-mansi-dev` actually exists and the role can be assumed
+- [x] Deploy `multistate-bootstrap-mansi-dev` via the ChangeSet flow (two-phase
+      IMPORT + UPDATE); `describe-change-set` JSON diffs captured above
+- [x] Confirm `multistate-bootstrap-mansi-dev` reaches `UPDATE_COMPLETE`
+- [ ] Deploy `multistate-network-mansi-dev`, `multistate-artifacts-mansi-dev`,
+      `multistate-app-mansi-dev` — blocked, see above (IGW quota; SCP +
+      one-stack-per-resource)
+- [ ] Attempt to delete a stack whose exports are in use by another; confirm
+      "Export ... is in use" — blocked, no network/app stack pair deployed yet
+- [x] Deliberate console edit + `detect-stack-drift` / `describe-stack-resource-drifts`
+      round trip — run against `multistate-bootstrap-mansi-dev`: `IN_SYNC` →
+      deliberate tag edit → `DRIFTED` → revert + reconcile → `IN_SYNC`; see the
+      "Drift detection round trip" section above for the full sequence, including a
+      genuine pre-existing drift (KMS encryption/versioning) the test incidentally
+      surfaced and fixed
+- [x] Run an `UPDATE` ChangeSet showing `Replacement: False` on every modified
+      resource — captured twice: `add-role-and-policy-v3`
+      (`BootstrapBucket` `Modify`/`Replacement: False`) and `reconcile-drift-v2`
+      (`BootstrapBucket`, `BootstrapBucketPolicy`, `CfnDeployRole` all
+      `Modify`/`Replacement: False`)
 - [ ] Run the `cfn-author` Claude Skill against a scratch branch and diff its output
       against these hand-authored templates — not run; the Skill scaffolds against a
-      live AWS account, which this session doesn't have access to either
+      live AWS account and this session's Skill access was not available

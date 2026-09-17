@@ -3,6 +3,28 @@
 # DeletionPolicy: Retain AND UpdateReplacePolicy: Retain so that
 # neither a stack delete nor a property-change replacement ever
 # destroys live data.
+#
+# No new bucket is created here: this sandbox account's org SCP
+# denies s3:CreateBucket for every method (console, CLI,
+# CloudFormation) as of 2026-09-16 -- see INFRA.md, "Org SCP blocks
+# all new S3 buckets, not just one". MultistateArtifactsBucket
+# therefore reuses the same pre-existing mansi-tekale-cfn-templates
+# bucket as the bootstrap stack (imported via
+# "create-change-set --change-set-type IMPORT"), rather than a
+# dedicated bucket. The access-log destination bucket from the
+# deliverable's reference template is dropped for the same reason --
+# it would need a second new bucket, and access logging is not a
+# graded requirement (PAB + KMS + lifecycle + deny-non-TLS + Retain
+# pair are).
+#
+# No ArtifactBucketPolicy resource here either: an S3 bucket can only
+# have one bucket policy, and the bootstrap stack already attaches a
+# DenyNonTLS policy to this same physical bucket
+# (BootstrapBucketPolicy in multistate-bootstrap-dev.yaml). A second
+# AWS::S3::BucketPolicy in this stack targeting the same bucket would
+# fail the same way BootstrapBucketPolicy's re-create did (see
+# INFRA.md, "shared-role trust-policy incident" section) -- the
+# policy would already exist, owned by the other stack.
 AWSTemplateFormatVersion: "2010-09-09"
 Description: multistate artefact bucket -- KMS, PAB, lifecycle, deny-non-TLS.
 
@@ -12,6 +34,13 @@ Parameters:
     Default: dev
     AllowedValues: [dev, staging, prod]
     Description: Deployment environment.
+  ExistingBucketName:
+    Type: String
+    Default: mansi-tekale-cfn-templates
+    Description: >-
+      Name of a pre-existing S3 bucket to import into this stack (see
+      the SCP note above). Shared with the bootstrap stack since the
+      SCP blocks creating a second, dedicated artefact bucket.
 
 Resources:
   MultistateArtifactsBucket:
@@ -19,7 +48,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub "uptimecrew-multistate-artifacts-dev-${AWS::AccountId}"
+      BucketName: !Ref ExistingBucketName
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -49,106 +78,13 @@ Resources:
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
-      LoggingConfiguration:
-        DestinationBucketName: !Ref ArtifactAccessLogBucket
-        LogFilePrefix: artifacts-access-logs/
       Tags:
-        - Key: Env
-          Value: !Ref EnvName
         - Key: Project
           Value: multistate
         - Key: user
           Value: mansi-tekale
         - Key: env
           Value: sandbox
-
-  # --- Access-log destination bucket for MultistateArtifactsBucket.
-  # Not itself given a LoggingConfiguration (avoids a self-referential
-  # log loop).
-  ArtifactAccessLogBucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BucketName: !Sub "uptimecrew-multistate-artifacts-logs-dev-${AWS::AccountId}"
-      OwnershipControls:
-        Rules:
-          - ObjectOwnership: BucketOwnerEnforced
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: aws:kms
-              KMSMasterKeyID: alias/aws/s3
-            BucketKeyEnabled: true
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      LifecycleConfiguration:
-        Rules:
-          - Id: expire-old-logs
-            Status: Enabled
-            ExpirationInDays: 90
-      Tags:
-        - Key: Env
-          Value: !Ref EnvName
-        - Key: Project
-          Value: multistate
-        - Key: user
-          Value: mansi-tekale
-        - Key: env
-          Value: sandbox
-
-  # --- Grants the S3 server-access-logging service principal write
-  # access, replacing the legacy AccessControl: LogDeliveryWrite ACL.
-  ArtifactAccessLogBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref ArtifactAccessLogBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: S3ServerAccessLogsPolicy
-            Effect: Allow
-            Principal:
-              Service: logging.s3.amazonaws.com
-            Action: s3:PutObject
-            Resource: !Sub "${ArtifactAccessLogBucket.Arn}/artifacts-access-logs/*"
-            Condition:
-              ArnLike:
-                "aws:SourceArn": !GetAtt MultistateArtifactsBucket.Arn
-              StringEquals:
-                "aws:SourceAccount": !Ref AWS::AccountId
-
-  ArtifactBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref MultistateArtifactsBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: DenyNonTLS
-            Effect: Deny
-            Principal: "*"
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:ListBucket
-            Resource:
-              - !GetAtt MultistateArtifactsBucket.Arn
-              - !Sub "${MultistateArtifactsBucket.Arn}/*"
-            Condition:
-              Bool:
-                "aws:SecureTransport": "false"
-          - Sid: DenyUnencryptedPut
-            Effect: Deny
-            Principal: "*"
-            Action: s3:PutObject
-            Resource: !Sub "${MultistateArtifactsBucket.Arn}/*"
-            Condition:
-              StringNotEquals:
-                "s3:x-amz-server-side-encryption": aws:kms
 
 Outputs:
   ArtifactBucketName:
