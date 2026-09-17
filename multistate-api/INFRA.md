@@ -133,6 +133,19 @@ suppresses a rule everywhere it would otherwise fire rather than per-resource; e
 entry above is deliberately narrow enough that suppressing the rule id doesn't hide
 an unrelated real finding.
 
+Suppressed inline (not in the deny-list, since this one is resource-specific and
+shouldn't blanket-suppress W11 anywhere else it might legitimately fire):
+- **W11** on `CfnDeployRole` — the `CfnValidateTemplate` statement uses
+  `Resource: "*"`, which is unavoidable: `cloudformation:ValidateTemplate`
+  validates a template body, not an existing stack or changeset, so AWS does not
+  support scoping it to any narrower ARN (confirmed the hard way — see "Shared-role
+  trust-policy conflict" below, where this same gap first surfaced as an
+  `AccessDenied` in CI). Every other action in this role's policy
+  (`CfnStackOps`'s eleven actions, `BootstrapBucketRead`, `PassStackRoles`) stays
+  scoped to specific `multistate-*` ARNs; suppressed via a `Metadata:
+  cfn_nag: rules_to_suppress` block on `CfnDeployRole` itself in
+  `multistate-bootstrap-dev.yaml`, matching `BootstrapBucket`'s W35 pattern above.
+
 ## Shared-role trust-policy conflict, and moving to a per-person role
 
 Mid-deliverable, a teammate's PR/session overwrote the shared `multistate-api-cfn-deploy`
@@ -160,8 +173,21 @@ That comparison also surfaced a real permissions gap: `cloudformation:ValidateTe
 needs its own statement with `Resource: "*"`, separate from the other 11
 stack-scoped actions in `CfnStackOps` — there's no stack ARN to scope against before
 a stack exists, so a `Resource: stack/multistate-*` condition can never match for
-this one action. `CFN_DEPLOY_ROLE_ARN` now points at this new role, and
-`cfn-validate.yml`'s three jobs (`cfn-lint`, `cfn-nag`, `validate-template`) all pass.
+this one action. `CFN_DEPLOY_ROLE_ARN` now points at this new role.
+
+Identifying this gap and actually fixing it in the committed YAML were two separate
+events, worth being explicit about: this section originally claimed the fix had
+landed, but `cloudformation:ValidateTemplate` was still bundled inside `CfnStackOps`
+in the committed template — the gap was correctly diagnosed here but the YAML edit
+never happened. Caught in review on 2026-09-17 (`validate-template` was still red
+in CI with `AccessDenied` on `ValidateTemplate`, not the `AssumeRoleWithWebIdentity`
+failure from before). Actually split into its own `CfnValidateTemplate` statement
+with `Resource: "*"` this round, deployed via an `UPDATE` ChangeSet against the
+live `CfnDeployRole`, and confirmed against the live policy with
+`aws iam get-role-policy` — not just re-asserted in this doc. That statement's
+`Resource: "*"` also trips `cfn-nag`'s W11 ("IAM role should not allow `*` resource
+on its permissions policy"); suppressed inline, see "cfn-nag findings and accepted
+tradeoffs" above.
 
 This is a structural risk of sharing IAM roles across a cohort in one AWS account —
 worth raising with the ES/instructor so the convention (one role per person, scoped

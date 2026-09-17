@@ -141,6 +141,19 @@ Resources:
     # because the whole first-time deploy is one IMPORT operation.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: >-
+              Only the CfnValidateTemplate statement uses Resource: "*",
+              and only for cloudformation:ValidateTemplate. AWS does not
+              support scoping ValidateTemplate to a resource ARN -- it
+              validates a template body, not an existing stack or
+              changeset, so no narrower Resource value can ever match.
+              The other eleven actions in this role's policy (CfnStackOps,
+              BootstrapBucketRead, PassStackRoles) are all scoped to
+              specific multistate-* ARNs, not "*".
     Properties:
       RoleName: multistate-api-cfn-deploy-mansi
       AssumeRolePolicyDocument:
