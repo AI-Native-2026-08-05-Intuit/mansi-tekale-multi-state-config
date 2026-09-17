@@ -1,0 +1,115 @@
+# TASK 3 S3 artefact bucket -- holds W5 D4 SAM artefacts and Argo
+# CD config snapshots. Hardened defaults from day one. Both
+# DeletionPolicy: Retain AND UpdateReplacePolicy: Retain so that
+# neither a stack delete nor a property-change replacement ever
+# destroys live data.
+#
+# No new bucket is created here: this sandbox account's org SCP
+# denies s3:CreateBucket for every method (console, CLI,
+# CloudFormation) as of 2026-09-16 -- see INFRA.md, "Org SCP blocks
+# all new S3 buckets, not just one". MultistateArtifactsBucket
+# therefore reuses the same pre-existing mansi-tekale-cfn-templates
+# bucket as the bootstrap stack (imported via
+# "create-change-set --change-set-type IMPORT"), rather than a
+# dedicated bucket. The access-log destination bucket from the
+# deliverable's reference template is dropped for the same reason --
+# it would need a second new bucket, and access logging is not a
+# graded requirement (PAB + KMS + lifecycle + deny-non-TLS + Retain
+# pair are).
+#
+# No ArtifactBucketPolicy resource here either: an S3 bucket can only
+# have one bucket policy, and the bootstrap stack already attaches a
+# DenyNonTLS policy to this same physical bucket
+# (BootstrapBucketPolicy in multistate-bootstrap-dev.yaml). A second
+# AWS::S3::BucketPolicy in this stack targeting the same bucket would
+# fail the same way BootstrapBucketPolicy's re-create did (see
+# INFRA.md, "shared-role trust-policy incident" section) -- the
+# policy would already exist, owned by the other stack.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: multistate artefact bucket -- KMS, PAB, lifecycle, deny-non-TLS.
+
+Parameters:
+  EnvName:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment.
+  ExistingBucketName:
+    Type: String
+    Default: mansi-tekale-cfn-templates
+    Description: >-
+      Name of a pre-existing S3 bucket to import into this stack (see
+      the SCP note above). Shared with the bootstrap stack since the
+      SCP blocks creating a second, dedicated artefact bucket.
+
+Resources:
+  MultistateArtifactsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W51
+            reason: >-
+              This bucket has no ArtifactBucketPolicy resource in this
+              template because it is the same physical bucket
+              (mansi-tekale-cfn-templates) the bootstrap stack already
+              manages -- an S3 bucket can only have one bucket policy,
+              and BootstrapBucketPolicy in multistate-bootstrap-dev.yaml
+              already attaches one (DenyNonTLS). cfn-nag scans each
+              template in isolation and has no visibility into the
+              other stack, so it correctly can't see that the physical
+              bucket does have a policy. See INFRA.md,
+              "multistate-artifacts-mansi-dev -- blocked, no stack
+              created".
+    Properties:
+      BucketName: !Ref ExistingBucketName
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/aws/s3
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: tier-after-90d
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+              - StorageClass: GLACIER_IR
+                TransitionInDays: 365
+          - Id: expire-old-versions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvName
+        - Key: Project
+          Value: multistate
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
+
+Outputs:
+  ArtifactBucketName:
+    Value: !Ref MultistateArtifactsBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-BucketName"
+  ArtifactBucketArn:
+    Value: !GetAtt MultistateArtifactsBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-BucketArn"

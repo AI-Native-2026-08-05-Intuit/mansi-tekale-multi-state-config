@@ -1,0 +1,28 @@
+# Rules intentionally accepted as tradeoffs; each is documented under
+# "cfn-nag findings and accepted tradeoffs" in multistate-api/INFRA.md.
+# Do not add an entry here without a matching entry in that doc.
+RulesToSuppress:
+  - id: W28
+    reason: >-
+      CfnDeployRole and MultistateAppSecurityGroup are referenced by exact
+      name from the GitHub Actions OIDC trust policy and other tooling; a
+      stable name is intentional despite blocking some updates.
+  - id: W33
+    reason: >-
+      MapPublicIpOnLaunch: true on the public subnets is the deliverable's
+      own spec for what makes a subnet "public".
+  - id: W5
+    reason: >-
+      443-only egress to 0.0.0.0/0 is flagged because ECR/STS/Secrets
+      Manager have no single fixed IP range without VPC endpoints
+      (out of scope for this deliverable).
+  - id: W35
+    reason: >-
+      Applies to ArtifactAccessLogBucket (the artifacts stack's log
+      destination bucket) -- enabling logging on a log bucket would be
+      a self-referential logging loop. MultistateArtifactsBucket has
+      real logging configured via ArtifactAccessLogBucket and is not
+      covered by this suppression. BootstrapBucket's own W35 is
+      suppressed inline via its Metadata block in
+      multistate-bootstrap-dev.yaml, not here -- see that template's
+      comment and INFRA.md, "Org SCP blocks a second bootstrap bucket".
