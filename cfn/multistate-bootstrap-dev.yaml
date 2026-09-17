@@ -106,6 +106,8 @@ Resources:
   # --- Bucket policy: deny any request not using TLS.
   BootstrapBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Bucket: !Ref BootstrapBucket
       PolicyDocument:
@@ -130,6 +132,15 @@ Resources:
   # repo's main branch + PR workflow. NEVER a wildcard sub claim.
   CfnDeployRole:
     Type: AWS::IAM::Role
+    # CloudFormation's IMPORT-type change set (used here because the
+    # bootstrap bucket must be imported, not created -- see
+    # ExistingBucketName above) requires a DeletionPolicy on every
+    # resource in the template, not just the one actually being
+    # imported. Teammates' working templates that use a plain CREATE
+    # (no import) don't need this on CfnDeployRole; this stack does,
+    # because the whole first-time deploy is one IMPORT operation.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       RoleName: multistate-api-cfn-deploy-mansi
       AssumeRolePolicyDocument:
