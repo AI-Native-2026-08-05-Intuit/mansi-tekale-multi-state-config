@@ -168,6 +168,59 @@ worth raising with the ES/instructor so the convention (one role per person, sco
 trust policy, matching permission policy) is documented once rather than each person
 discovering it independently.
 
+## Resource-name collisions with other cohort members' live deploys
+
+The deliverable's stack names (`multistate-bootstrap-dev`, etc.) and this template's
+original hardcoded resource names (`RoleName: multistate-api-cfn-deploy`,
+`BucketName: uptimecrew-multistate-bootstrap-${EnvName}-${AWS::AccountId}`) are not
+unique per cohort member — they're the same literal names the deliverable's own spec
+uses. Since this AWS account is shared across the whole cohort, another member's
+identically-named live stack already owned both the stack name and these two resource
+names, and CloudFormation's pre-create validation correctly rejected re-creating them
+("Resource of type ... with identifier ... already exists").
+
+Fixed by suffixing every account-unique name with `-mansi` (stack name, bucket names,
+`RoleName`), matching the convention every other cohort member uses for their own
+per-person suffix, confirmed against two teammates' working templates for this same
+deliverable (Harshini's and Varun's).
+
+## Org SCP blocks a second bootstrap bucket
+
+After fixing the name collisions above, the stack still failed to fully create:
+`AccessLogBucket` (a destination bucket for `BootstrapBucket`'s S3 server access
+logs, originally added to satisfy cfn-nag's W35) hit an explicit deny from an AWS
+Organizations Service Control Policy:
+
+```
+User: arn:aws:iam::228615803036:user/mansibalaji_tekale@intuit.com is not authorized
+to perform: s3:CreateBucket on resource:
+"arn:aws:s3:::uptimecrew-multistate-bootstrap-mansi-logs-dev-228615803036" with an
+explicit deny in a service control policy:
+arn:aws:organizations::183729561937:policy/o-wxk29mg34e/service_control_policy/p-upmysz2c
+```
+
+Confirmed against a teammate's (Harshini's) working `multistate-bootstrap-dev.yaml`
+for this same deliverable: her template's comments state the org's SCP began denying
+`s3:CreateBucket` for every cohort member "via every method (console, CLI,
+CloudFormation) as of 2026-09-16" — i.e., mid-cohort, after some members had already
+created their bootstrap buckets, and before others (including this deploy) got a
+chance to. Her bucket only exists because it predates the SCP change; her template
+works around the deny by importing that pre-existing bucket
+(`create-change-set --change-set-type IMPORT`) rather than creating a new one, and
+explicitly has no access-log bucket, for the same reason: any *new* bucket create is
+blocked account-wide, regardless of IAM permissions, tags, or naming.
+
+An SCP deny at the AWS Organizations level overrides any IAM-level allow on every
+identity in the account — no IAM policy, role, or tag change inside this account can
+override it. Removed `AccessLogBucket`, its bucket policy, and `BootstrapBucket`'s
+`LoggingConfiguration` rather than attempt an import workaround for a
+non-essential, optional hardening resource. `BootstrapBucket` itself created
+successfully in the same deploy attempt (it already existed as an intended resource
+of this stack, so its own creation wasn't newly blocked at the time of that attempt);
+W35 on it is now suppressed inline via a `Metadata: cfn_nag: rules_to_suppress` block
+in [`multistate-bootstrap-dev.yaml`](../cfn/multistate-bootstrap-dev.yaml), matching
+Harshini's and Yogesh's templates' convention, rather than the external deny-list.
+
 ## Secrets Manager over `NoEcho` parameters
 
 `multistate-app-dev` resolves the RDS master password via a Secrets Manager dynamic

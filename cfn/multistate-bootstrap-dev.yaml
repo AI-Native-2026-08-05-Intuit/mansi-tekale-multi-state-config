@@ -49,6 +49,17 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: >-
+              Access logging needs a separate logging-destination
+              bucket; this sandbox account's org SCP denies
+              s3:CreateBucket for any bucket this stack tries to
+              create beyond the one BootstrapBucket already needed
+              (confirmed via a real deploy attempt -- see INFRA.md,
+              "Org SCP blocks a second bootstrap bucket").
     Properties:
       BucketName: !Sub "uptimecrew-multistate-bootstrap-mansi-${EnvName}-${AWS::AccountId}"
       VersioningConfiguration:
@@ -70,9 +81,6 @@ Resources:
             Status: Enabled
             NoncurrentVersionExpiration:
               NoncurrentDays: !Ref RetentionDays
-      LoggingConfiguration:
-        DestinationBucketName: !Ref AccessLogBucket
-        LogFilePrefix: bootstrap-access-logs/
       Tags:
         - Key: Env
           Value: !Ref EnvName
@@ -82,64 +90,6 @@ Resources:
           Value: mansi-tekale
         - Key: env
           Value: sandbox
-
-  # --- Access-log destination bucket for BootstrapBucket. Not itself
-  # given a LoggingConfiguration (avoids a self-referential log loop).
-  AccessLogBucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BucketName: !Sub "uptimecrew-multistate-bootstrap-mansi-logs-${EnvName}-${AWS::AccountId}"
-      OwnershipControls:
-        Rules:
-          - ObjectOwnership: BucketOwnerEnforced
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: aws:kms
-              KMSMasterKeyID: alias/aws/s3
-            BucketKeyEnabled: true
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      LifecycleConfiguration:
-        Rules:
-          - Id: expire-old-logs
-            Status: Enabled
-            ExpirationInDays: !Ref RetentionDays
-      Tags:
-        - Key: Env
-          Value: !Ref EnvName
-        - Key: Project
-          Value: multistate
-        - Key: user
-          Value: mansi-tekale
-        - Key: env
-          Value: sandbox
-
-  # --- Grants the S3 server-access-logging service principal write
-  # access, replacing the legacy AccessControl: LogDeliveryWrite ACL.
-  AccessLogBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref AccessLogBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: S3ServerAccessLogsPolicy
-            Effect: Allow
-            Principal:
-              Service: logging.s3.amazonaws.com
-            Action: s3:PutObject
-            Resource: !Sub "${AccessLogBucket.Arn}/bootstrap-access-logs/*"
-            Condition:
-              ArnLike:
-                "aws:SourceArn": !GetAtt BootstrapBucket.Arn
-              StringEquals:
-                "aws:SourceAccount": !Ref AWS::AccountId
 
   # --- Bucket policy: deny any request not using TLS.
   BootstrapBucketPolicy:

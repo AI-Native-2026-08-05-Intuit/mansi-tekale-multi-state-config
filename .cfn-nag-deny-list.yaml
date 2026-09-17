@@ -18,7 +18,11 @@ RulesToSuppress:
       (out of scope for this deliverable).
   - id: W35
     reason: >-
-      Applies to the access-log destination buckets themselves; enabling
-      logging on a log bucket would be a self-referential logging loop.
-      The primary data buckets (BootstrapBucket, MultistateArtifactsBucket)
-      have real logging configured and are not covered by this suppression.
+      Applies to ArtifactAccessLogBucket (the artifacts stack's log
+      destination bucket) -- enabling logging on a log bucket would be
+      a self-referential logging loop. MultistateArtifactsBucket has
+      real logging configured via ArtifactAccessLogBucket and is not
+      covered by this suppression. BootstrapBucket's own W35 is
+      suppressed inline via its Metadata block in
+      multistate-bootstrap-dev.yaml, not here -- see that template's
+      comment and INFRA.md, "Org SCP blocks a second bootstrap bucket".
