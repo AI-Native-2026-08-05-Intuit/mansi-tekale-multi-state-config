@@ -39,6 +39,18 @@ Parameters:
     Type: String
     Default: mansi-tekale-multi-state-config
     Description: Repo (the W6 D2 gitops config repo).
+  ExistingBucketName:
+    Type: String
+    Default: mansi-tekale-cfn-templates
+    Description: >-
+      Name of a pre-existing S3 bucket to import into this stack. This
+      sandbox account's org SCP denies s3:CreateBucket for every method
+      (console, CLI, CloudFormation) as of 2026-09-16, confirmed by two
+      separate failed create attempts in this deploy -- see INFRA.md,
+      "Org SCP blocks all new S3 buckets, not just one". The bucket
+      must be created out-of-band (it was, before the deny took
+      effect) and imported via "create-change-set --change-set-type
+      IMPORT" rather than created by this template.
 
 Resources:
   # --- The bootstrap bucket. Hardened from day 1: PAB on, default
@@ -61,7 +73,7 @@ Resources:
               (confirmed via a real deploy attempt -- see INFRA.md,
               "Org SCP blocks a second bootstrap bucket").
     Properties:
-      BucketName: !Sub "uptimecrew-multistate-bootstrap-mansi-${EnvName}-${AWS::AccountId}"
+      BucketName: !Ref ExistingBucketName
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
