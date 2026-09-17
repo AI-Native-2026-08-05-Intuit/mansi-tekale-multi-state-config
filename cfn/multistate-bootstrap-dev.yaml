@@ -50,7 +50,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub "uptimecrew-multistate-bootstrap-${EnvName}-${AWS::AccountId}"
+      BucketName: !Sub "uptimecrew-multistate-bootstrap-mansi-${EnvName}-${AWS::AccountId}"
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -90,7 +90,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub "uptimecrew-multistate-bootstrap-logs-${EnvName}-${AWS::AccountId}"
+      BucketName: !Sub "uptimecrew-multistate-bootstrap-mansi-logs-${EnvName}-${AWS::AccountId}"
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -169,7 +169,7 @@ Resources:
   CfnDeployRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: multistate-api-cfn-deploy
+      RoleName: multistate-api-cfn-deploy-mansi
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:

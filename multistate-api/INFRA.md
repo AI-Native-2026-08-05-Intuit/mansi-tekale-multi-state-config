@@ -12,7 +12,7 @@ Deploy in this order — each later stack consumes an earlier stack's `Export`s 
 
 | Order | Stack name (this deploy)          | Template                                                            | Provisions                                                         |
 |-------|------------------------------------|-----------------------------------------------------------------------|---------------------------------------------------------------------|
-| 1     | `multistate-bootstrap-mansi-dev`  | [`cfn/multistate-bootstrap-dev.yaml`](../cfn/multistate-bootstrap-dev.yaml) | Bootstrap S3 bucket + `multistate-api-cfn-deploy` IAM role (OIDC) |
+| 1     | `multistate-bootstrap-mansi-dev`  | [`cfn/multistate-bootstrap-dev.yaml`](../cfn/multistate-bootstrap-dev.yaml) | Bootstrap S3 bucket + `multistate-api-cfn-deploy-mansi` IAM role (OIDC) |
 | 2     | `multistate-network-mansi-dev`    | [`cfn/multistate-network-dev.yaml`](../cfn/multistate-network-dev.yaml)   | 3-AZ VPC, public/private subnets, NAT GW(s), app security group   |
 | 3     | `multistate-artifacts-mansi-dev`  | [`cfn/multistate-artifacts-dev.yaml`](../cfn/multistate-artifacts-dev.yaml) | Hardened S3 artefact bucket (SAM + Argo CD config snapshots)      |
 | 4     | `multistate-app-mansi-dev`        | [`cfn/multistate-app-dev.yaml`](../cfn/multistate-app-dev.yaml)           | RDS Postgres + Secrets Manager master credentials                 |
@@ -108,7 +108,7 @@ Fixed:
 Accepted as tradeoffs, listed in [`.cfn-nag-deny-list.yaml`](../.cfn-nag-deny-list.yaml)
 so the CI job stays green without silently ignoring anything undocumented:
 - **W28** on `CfnDeployRole` and `MultistateAppSecurityGroup` — both have explicit
-  names (`RoleName: multistate-api-cfn-deploy`, `GroupName: multistate-${EnvName}-app-sg`)
+  names (`RoleName: multistate-api-cfn-deploy-mansi`, `GroupName: multistate-${EnvName}-app-sg`)
   that other stacks/workflows depend on by exact name (the GitHub Actions OIDC trust
   policy references this role by name; `multistate-app-dev` could in principle
   `!ImportValue` the SG id instead, but the explicit name is intentional for
