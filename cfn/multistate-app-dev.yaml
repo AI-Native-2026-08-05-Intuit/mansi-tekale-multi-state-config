@@ -25,7 +25,7 @@ Parameters:
     Description: Deployment environment.
   NetworkStackName:
     Type: String
-    Default: multistate-network-dev
+    Default: multistate-network-mansi-dev
     Description: Name of the network stack whose exports we !ImportValue.
   DbInstanceClass:
     Type: String

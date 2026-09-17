@@ -10,16 +10,26 @@ workloads depend on (network, IAM deploy role, database, artefact storage).
 Deploy in this order — each later stack consumes an earlier stack's `Export`s via
 `!ImportValue`, so order matters and cannot be parallelized on first create.
 
-| Order | Stack name                  | Template                                                            | Provisions                                                         |
-|-------|------------------------------|-----------------------------------------------------------------------|---------------------------------------------------------------------|
-| 1     | `multistate-bootstrap-dev`  | [`cfn/multistate-bootstrap-dev.yaml`](../cfn/multistate-bootstrap-dev.yaml) | Bootstrap S3 bucket + `multistate-api-cfn-deploy` IAM role (OIDC) |
-| 2     | `multistate-network-dev`    | [`cfn/multistate-network-dev.yaml`](../cfn/multistate-network-dev.yaml)   | 3-AZ VPC, public/private subnets, NAT GW(s), app security group   |
-| 3     | `multistate-artifacts-dev`  | [`cfn/multistate-artifacts-dev.yaml`](../cfn/multistate-artifacts-dev.yaml) | Hardened S3 artefact bucket (SAM + Argo CD config snapshots)      |
-| 4     | `multistate-app-dev`        | [`cfn/multistate-app-dev.yaml`](../cfn/multistate-app-dev.yaml)           | RDS Postgres + Secrets Manager master credentials                 |
+| Order | Stack name (this deploy)          | Template                                                            | Provisions                                                         |
+|-------|------------------------------------|-----------------------------------------------------------------------|---------------------------------------------------------------------|
+| 1     | `multistate-bootstrap-mansi-dev`  | [`cfn/multistate-bootstrap-dev.yaml`](../cfn/multistate-bootstrap-dev.yaml) | Bootstrap S3 bucket + `multistate-api-cfn-deploy` IAM role (OIDC) |
+| 2     | `multistate-network-mansi-dev`    | [`cfn/multistate-network-dev.yaml`](../cfn/multistate-network-dev.yaml)   | 3-AZ VPC, public/private subnets, NAT GW(s), app security group   |
+| 3     | `multistate-artifacts-mansi-dev`  | [`cfn/multistate-artifacts-dev.yaml`](../cfn/multistate-artifacts-dev.yaml) | Hardened S3 artefact bucket (SAM + Argo CD config snapshots)      |
+| 4     | `multistate-app-mansi-dev`        | [`cfn/multistate-app-dev.yaml`](../cfn/multistate-app-dev.yaml)           | RDS Postgres + Secrets Manager master credentials                 |
+
+The templates' filenames keep the plain `-dev` suffix from the deliverable spec, but
+the actual deployed **stack name** in this shared cohort account carries a `-mansi-`
+segment (matching the convention teammates already use — `-varun-`, `-harshini-`,
+`-sameer-yadav-`), because the plain names (`multistate-bootstrap-dev`, etc.) are
+already owned by another cohort member's live deploy in this same AWS account.
+CloudFormation stack names must be unique per account+region, so a per-person suffix
+is required, not optional, once more than one person deploys from the same spec into
+a shared account. `multistate-app-dev.yaml`'s `NetworkStackName` parameter default is
+set to `multistate-network-mansi-dev` to match.
 
 Stack 3 and 4 have no dependency on each other and can deploy in either order once
-stack 2 exists; stack 4 imports `multistate-network-dev`'s `PrivateSubnets`, `VpcId`,
-and `AppSgId` exports.
+stack 2 exists; stack 4 imports `multistate-network-mansi-dev`'s `PrivateSubnets`,
+`VpcId`, and `AppSgId` exports.
 
 ## The ChangeSet flow (used for every stack, every deploy)
 
