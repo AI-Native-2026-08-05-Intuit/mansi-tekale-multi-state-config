@@ -47,6 +47,22 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W51
+            reason: >-
+              This bucket has no ArtifactBucketPolicy resource in this
+              template because it is the same physical bucket
+              (mansi-tekale-cfn-templates) the bootstrap stack already
+              manages -- an S3 bucket can only have one bucket policy,
+              and BootstrapBucketPolicy in multistate-bootstrap-dev.yaml
+              already attaches one (DenyNonTLS). cfn-nag scans each
+              template in isolation and has no visibility into the
+              other stack, so it correctly can't see that the physical
+              bucket does have a policy. See INFRA.md,
+              "multistate-artifacts-mansi-dev -- blocked, no stack
+              created".
     Properties:
       BucketName: !Ref ExistingBucketName
       VersioningConfiguration:
