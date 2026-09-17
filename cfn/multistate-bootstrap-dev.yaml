@@ -186,13 +186,21 @@ Resources:
                   - cloudformation:DescribeStackEvents
                   - cloudformation:DescribeStackResources
                   - cloudformation:GetTemplate
-                  - cloudformation:ValidateTemplate
                   - cloudformation:DetectStackDrift
                   - cloudformation:DescribeStackDriftDetectionStatus
                   - cloudformation:DescribeStackResourceDrifts
                 Resource:
                   - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/multistate-*"
                   - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:changeSet/multistate-*"
+              # ValidateTemplate validates a template body, not a specific
+              # stack/changeset resource -- AWS does not support scoping it
+              # to a resource ARN, so it must be granted on Resource: "*"
+              # separately from the stack-scoped actions above.
+              - Sid: CfnValidateTemplate
+                Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                Resource: "*"
               # S3 read on the bootstrap bucket (for stored templates).
               - Sid: BootstrapBucketRead
                 Effect: Allow
