@@ -33,11 +33,11 @@ Parameters:
     Description: NoncurrentVersionExpiration in days (lifecycle rule).
   GitHubOrg:
     Type: String
-    Default: uptimecrew
+    Default: AI-Native-2026-08-05-Intuit
     Description: GitHub org that hosts the W6 D1 OIDC role's repo.
   GitHubRepo:
     Type: String
-    Default: multistate-config
+    Default: mansi-tekale-multi-state-config
     Description: Repo (the W6 D2 gitops config repo).
 
 Resources:
@@ -184,13 +184,17 @@ Resources:
               StringEquals:
                 "token.actions.githubusercontent.com:aud": sts.amazonaws.com
               # StringLike (not StringEquals) on sub: branch + PR
-              # refs differ per workflow run; only the org/repo
-              # prefix is fixed, so the match must allow wildcards
-              # there while still pinning to this exact repo.
+              # refs differ per workflow run, and this org enforces
+              # GitHub's immutable subject claim (repos created after
+              # July 15, 2026 can't opt out), which embeds numeric
+              # org/repo IDs as repo:ORG@<id>/REPO@<id>:... instead of
+              # plain names -- so the org/repo segment itself must
+              # also be wildcarded (@*), not just the ref/pull_request
+              # suffix, or the sub claim can never match.
               StringLike:
                 "token.actions.githubusercontent.com:sub":
-                  - !Sub "repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/main"
-                  - !Sub "repo:${GitHubOrg}/${GitHubRepo}:pull_request"
+                  - !Sub "repo:${GitHubOrg}@*/${GitHubRepo}@*:ref:refs/heads/main"
+                  - !Sub "repo:${GitHubOrg}@*/${GitHubRepo}@*:pull_request"
       Policies:
         - PolicyName: cfn-deploy-narrow
           PolicyDocument:
