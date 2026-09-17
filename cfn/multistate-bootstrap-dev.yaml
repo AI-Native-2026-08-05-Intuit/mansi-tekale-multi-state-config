@@ -78,6 +78,10 @@ Resources:
           Value: !Ref EnvName
         - Key: Project
           Value: multistate
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   # --- Access-log destination bucket for BootstrapBucket. Not itself
   # given a LoggingConfiguration (avoids a self-referential log loop).
@@ -111,6 +115,10 @@ Resources:
           Value: !Ref EnvName
         - Key: Project
           Value: multistate
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   # --- Grants the S3 server-access-logging service principal write
   # access, replacing the legacy AccessControl: LogDeliveryWrite ACL.
@@ -228,6 +236,10 @@ Resources:
           Value: !Ref EnvName
         - Key: Project
           Value: multistate
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
 Outputs:
   BootstrapBucketName:

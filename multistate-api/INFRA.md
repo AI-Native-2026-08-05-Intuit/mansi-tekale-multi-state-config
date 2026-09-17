@@ -123,18 +123,40 @@ suppresses a rule everywhere it would otherwise fire rather than per-resource; e
 entry above is deliberately narrow enough that suppressing the rule id doesn't hide
 an unrelated real finding.
 
-## Shared-role trust-policy conflict (cohort account)
+## Shared-role trust-policy conflict, and moving to a per-person role
 
-Mid-deliverable, a teammate's PR/session overwrote `multistate-api-cfn-deploy`'s trust
-policy to scope `StringLike` on `token.actions.githubusercontent.com:sub` to only
-their own repo, which silently locked every other cohort member's `validate-template`
-CI job out of assuming the role (the `sub` claim no longer matched). Fixed by editing
-the trust policy to list both repos' `ref:refs/heads/main` and `pull_request` entries
-side by side, rather than either person overwriting the other's entry. This is a
-structural risk of a shared IAM role across a cohort sharing one AWS account — worth
-raising with the ES/instructor as a cohort-wide fix (e.g. one role per repo, or a
-wildcard `sub` pattern scoped to the shared org) rather than each person patching the
-list reactively when they get locked out.
+Mid-deliverable, a teammate's PR/session overwrote the shared `multistate-api-cfn-deploy`
+role's trust policy to scope `StringLike` on `token.actions.githubusercontent.com:sub`
+to only their own repo, which silently locked every other cohort member's
+`validate-template` CI job out of assuming the role. First fix: edited the trust
+policy to list both repos side by side rather than overwriting.
+
+That surfaced a second, unrelated problem: this repo has GitHub's newer **immutable
+subject claim** enforced (repos created after July 15, 2026 can't opt out), which
+changes the OIDC `sub` claim format to embed numeric org/repo IDs
+(`repo:ORG@<org-id>/REPO@<repo-id>:...`) instead of plain names. The shared role's
+trust policy used the old name-only format and could never match, regardless of what
+repos were listed — confirmed by comparing against a teammate's already-working
+per-person role, whose trust policy uses a wildcard on the numeric IDs
+(`repo:ORG@*/REPO@*:...`) specifically to survive this.
+
+Rather than keep patching the shared role (which multiple cohort members already
+depend on and had already edited twice), created a dedicated
+`multistate-api-cfn-deploy-mansi` role — matching the existing per-person convention
+in this account (`multistate-api-cfn-deploy-varun`, `-harshini`, `sameer-yadav-*`) —
+with its own OIDC-only trust policy (wildcarded IDs, scoped to this repo) and an
+inline `cfn-deploy-narrow` permissions policy modeled on the working `-varun` role.
+That comparison also surfaced a real permissions gap: `cloudformation:ValidateTemplate`
+needs its own statement with `Resource: "*"`, separate from the other 11
+stack-scoped actions in `CfnStackOps` — there's no stack ARN to scope against before
+a stack exists, so a `Resource: stack/multistate-*` condition can never match for
+this one action. `CFN_DEPLOY_ROLE_ARN` now points at this new role, and
+`cfn-validate.yml`'s three jobs (`cfn-lint`, `cfn-nag`, `validate-template`) all pass.
+
+This is a structural risk of sharing IAM roles across a cohort in one AWS account —
+worth raising with the ES/instructor so the convention (one role per person, scoped
+trust policy, matching permission policy) is documented once rather than each person
+discovering it independently.
 
 ## Secrets Manager over `NoEcho` parameters
 
@@ -203,21 +225,33 @@ of being scaffolded and then corrected:
 
 ## Pending AWS-side verification
 
-This PR ships four templates that pass local `cfn-lint` validation and the
-`cfn-validate.yml` CI workflow, but the following require a real AWS account and were
-**not** performed in this environment (no AWS credentials configured):
+This PR ships four templates that pass `cfn-lint`, `cfn-nag`, and
+`aws cloudformation validate-template` — all three run for real in
+`cfn-validate.yml` CI on every push, not simulated. What's still pending requires
+actually creating stacks in this shared AWS account, which needs deploy permissions
+(`cloudformation:CreateChangeSet`/`ExecuteChangeSet` etc. from an identity that can
+also create the underlying VPC/RDS/S3/IAM resources) that this personal AWS console
+login does not have — confirmed by hitting `s3:CreateBucket` denials in the console
+directly, separately from the OIDC-role work above. Getting real deploy permissions
+in this shared account requires an admin action outside this PR's scope:
 
+- [x] `cfn-lint cfn/*.yaml` — 0 errors, 0 warnings (local + CI)
+- [x] `cfn_nag_scan --input-path cfn/ --fail-on-warnings` — 0 failures, 0 warnings
+      after fixes (CI)
+- [x] `aws cloudformation validate-template` against all four templates — passes in
+      CI via OIDC (`multistate-api-cfn-deploy-mansi`)
 - [ ] Deploy all four stacks via the ChangeSet flow; paste `describe-change-set` JSON
-      diffs into the PR
-- [ ] Confirm all four stacks reach `CREATE_COMPLETE`
+      diffs into the PR — blocked, no deploy permissions
+- [ ] Confirm all four stacks reach `CREATE_COMPLETE` — blocked, no deploy permissions
 - [ ] Attempt to delete `multistate-network-dev` while `multistate-app-dev` still
       imports its exports; confirm CloudFormation refuses with "Export ... is in use"
+      — blocked, no deploy permissions (nothing to delete without a deploy)
 - [ ] Make a deliberate console edit (e.g. add a tag to the artefacts bucket); run
       `detect-stack-drift` + `describe-stack-resource-drifts`; confirm `DRIFTED`;
-      revert; confirm `IN_SYNC`
+      revert; confirm `IN_SYNC` — blocked, no deploy permissions
 - [ ] Run an `UPDATE` ChangeSet against `multistate-network-dev` (e.g. rename a tag);
       confirm `describe-change-set` shows `Replacement: False` on every modified
-      resource
-- [x] Run `cfn_nag_scan --input-path cfn/ --fail-on-warnings` for real — done via CI
+      resource — blocked, no deploy permissions
 - [ ] Run the `cfn-author` Claude Skill against a scratch branch and diff its output
-      against these hand-authored templates
+      against these hand-authored templates — not run; the Skill scaffolds against a
+      live AWS account, which this session doesn't have access to either

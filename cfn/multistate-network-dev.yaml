@@ -39,6 +39,10 @@ Resources:
           Value: !Ref EnvName
         - Key: Project
           Value: multistate
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -46,6 +50,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-igw"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   IgwAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -64,6 +72,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-public-a"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
   PublicSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -74,6 +86,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-public-b"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
   PublicSubnetC:
     Type: AWS::EC2::Subnet
     Properties:
@@ -84,6 +100,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-public-c"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   # --- Private subnets (3): NAT-routed, host workloads.
   PrivateSubnetA:
@@ -95,6 +115,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-private-a"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
   PrivateSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -104,6 +128,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-private-b"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
   PrivateSubnetC:
     Type: AWS::EC2::Subnet
     Properties:
@@ -113,6 +141,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-private-c"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   # --- NAT Gateway: always at least one (A); B and C only in HA envs.
   NatEipA:
@@ -123,6 +155,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-nat-eip-a"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
   NatGatewayA:
     Type: AWS::EC2::NatGateway
     Properties:
@@ -131,6 +167,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-nat-a"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   NatEipB:
     Type: AWS::EC2::EIP
@@ -278,6 +318,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-app-sg"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   # --- VPC Flow Logs: captures accepted/rejected traffic metadata for
   # network forensics and compliance audit trails.

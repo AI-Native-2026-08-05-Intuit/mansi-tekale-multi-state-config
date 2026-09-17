@@ -56,6 +56,10 @@ Resources:
           Value: !Ref EnvName
         - Key: Project
           Value: multistate
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   # --- DB subnet group spanning the private subnets imported from
   # the network stack. !Split + !ImportValue is the cross-stack pattern.
@@ -72,6 +76,10 @@ Resources:
           Value: !Ref EnvName
         - Key: Project
           Value: multistate
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   # --- DB security group: ingress 5432 only from the app SG.
   DbSecurityGroup:
@@ -96,6 +104,10 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-db-sg"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
 
   # --- The RDS instance itself. Stateful: Retain on BOTH policies.
   # MasterUsername + MasterUserPassword resolve dynamically from
@@ -126,6 +138,10 @@ Resources:
           Value: !Ref EnvName
         - Key: Project
           Value: multistate
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
     DependsOn:
       - DbMasterSecret
 
