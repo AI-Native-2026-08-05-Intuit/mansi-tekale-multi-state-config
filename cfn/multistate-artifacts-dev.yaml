@@ -79,6 +79,8 @@ Resources:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
       Tags:
+        - Key: Environment
+          Value: !Ref EnvName
         - Key: Project
           Value: multistate
         - Key: user
