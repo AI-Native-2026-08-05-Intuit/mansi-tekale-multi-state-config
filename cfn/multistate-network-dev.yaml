@@ -164,6 +164,10 @@ Resources:
     Properties:
       AllocationId: !GetAtt NatEipA.AllocationId
       SubnetId: !Ref PublicSubnetA
+      # Cost-allocation tag taxonomy (W6D4 Task 1): service/env/tenant/feature
+      # scope this NAT gateway into the multistate-monthly-cost-dev Budget.
+      # Activate these keys in the Billing console -- activation does NOT
+      # backfill, so tag before you need the history.
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-nat-a"
@@ -171,6 +175,12 @@ Resources:
           Value: mansi-tekale
         - Key: env
           Value: sandbox
+        - Key: service
+          Value: multistate
+        - Key: tenant
+          Value: shared
+        - Key: feature
+          Value: summarize-nexus
 
   NatEipB:
     Type: AWS::EC2::EIP
@@ -184,6 +194,19 @@ Resources:
     Properties:
       AllocationId: !GetAtt NatEipB.AllocationId
       SubnetId: !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub "multistate-${EnvName}-nat-b"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
+        - Key: service
+          Value: multistate
+        - Key: tenant
+          Value: shared
+        - Key: feature
+          Value: summarize-nexus
 
   NatEipC:
     Type: AWS::EC2::EIP
@@ -197,6 +220,19 @@ Resources:
     Properties:
       AllocationId: !GetAtt NatEipC.AllocationId
       SubnetId: !Ref PublicSubnetC
+      Tags:
+        - Key: Name
+          Value: !Sub "multistate-${EnvName}-nat-c"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: sandbox
+        - Key: service
+          Value: multistate
+        - Key: tenant
+          Value: shared
+        - Key: feature
+          Value: summarize-nexus
 
   # --- Public route table: 0.0.0.0/0 -> IGW. Shared across all 3 AZs.
   PublicRouteTable:
