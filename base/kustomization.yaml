@@ -8,3 +8,7 @@ resources:
   - 30-configmap.yaml
   - 40-secret.yaml
   - 60-servicemonitor.yaml
+  - 70-multistate-api-worker.deployment.yaml
+  - 71-multistate-api-worker.scaledobject.yaml
+  - 80-multistate-api.hpa.yaml
+  - 81-multistate-api.pdb.yaml

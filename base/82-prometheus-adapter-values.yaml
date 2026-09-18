@@ -1,0 +1,20 @@
+# W6D5: Helm values for the Prometheus Adapter (installed separately via
+# `helm install prom-adapter prometheus-community/prometheus-adapter -f
+# this-file`, not applied by kustomize). Maps the Micrometer gauge into
+# the custom-metrics API so the HPA in 80-multistate-api.hpa.yaml can
+# read it. prometheusUrl points at the W5D5 kube-prometheus-stack
+# Prometheus Service.
+prometheus:
+  url: http://kube-prometheus-stack-prometheus.monitoring.svc
+  port: 9090
+rules:
+  custom:
+    - seriesQuery: 'multistate_inflight_requests{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: namespace}
+          pod: {resource: pod}
+      name:
+        matches: "multistate_inflight_requests"
+        as: "multistate_inflight_requests"
+      metricsQuery: 'avg_over_time(multistate_inflight_requests{<<.LabelMatchers>>}[1m])'

@@ -1,0 +1,32 @@
+# AUTHOR-AND-DEFEND -- do NOT deploy. AWS::XRay::SamplingRule is an
+# AWS-managed resource with no k3d/local equivalent; this CFN template
+# is authored and reviewed like the rest of cfn/, but intentionally not
+# added to the deploy pipeline for this deliverable.
+#
+# ReservoirSize: 10 guarantees the first 10 traces/sec are ALWAYS
+# captured, regardless of FixedRate -- so a slow window (low overall
+# request volume) still gets full visibility into the first handful of
+# requests, including the first traces of an incident. FixedRate: 0.05
+# samples 5% of everything above that floor. FixedRate is never set to
+# 0: doing so would sample nothing once the reservoir is exhausted,
+# blinding X-Ray to error spikes during otherwise-quiet windows -- the
+# exact time an incident is most likely to go unnoticed.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: multistate observability -- X-Ray sampling rule (author-and-defend, not deployed).
+
+Resources:
+  MultistateSamplingRule:
+    Type: AWS::XRay::SamplingRule
+    Properties:
+      SamplingRule:
+        RuleName: multistate-api-default
+        Priority: 1000
+        ReservoirSize: 10
+        FixedRate: 0.05
+        ServiceName: multistate-api
+        ServiceType: "*"
+        Host: "*"
+        HTTPMethod: "*"
+        URLPath: "*"
+        ResourceARN: "*"
+        Version: 1

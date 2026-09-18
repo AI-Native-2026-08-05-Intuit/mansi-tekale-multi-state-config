@@ -1,0 +1,33 @@
+# W6D5 (RUNNABLE): HPA on the custom Prometheus metric
+# multistate_inflight_requests, fed via the Prometheus Adapter. Target 7
+# comes from a single-replica saturation test (ramp one pod to the
+# 500ms p99 SLO). CPU-only HPA is blind to LLM-API-bound latency -- the
+# api pod waits on the network, CPU stays low while p99 climbs. Do not
+# also set spec.replicas on the Deployment.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: multistate-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: multistate-api
+  minReplicas: 3
+  maxReplicas: 28
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: multistate_inflight_requests
+        target:
+          type: AverageValue
+          averageValue: "7"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies: [{type: Percent, value: 25, periodSeconds: 60}]
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies: [{type: Percent, value: 100, periodSeconds: 60}]
+      selectPolicy: Max

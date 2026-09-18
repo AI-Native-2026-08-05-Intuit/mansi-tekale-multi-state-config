@@ -1,0 +1,41 @@
+# AUTHOR-AND-DEFEND -- do NOT apply to k3d. SQS is an AWS-managed
+# service with no k3d equivalent, so this is the production form of
+# base/71-multistate-api-worker.scaledobject.yaml's Kafka trigger: on a
+# managed cluster the worker scales on SQS queue depth instead of Kafka
+# lag. The SQS GetQueueAttributes permission lives on the KEDA
+# OPERATOR's IRSA role via identityOwner: operator -- never on the
+# workload pod -- so a compromised worker pod cannot read queue
+# attributes or drain the queue under its own identity. The dev Kafka
+# trigger needs no TriggerAuthentication because the in-cluster broker
+# is plaintext; this is where that credential-placement discipline
+# actually applies.
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: multistate-aws-auth
+  namespace: multistate-dev
+spec:
+  podIdentity:
+    provider: aws
+    identityOwner: operator
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: multistate-worker-scaledobject-sqs
+  namespace: multistate-dev
+spec:
+  scaleTargetRef:
+    name: multistate-api-worker
+  minReplicaCount: 0
+  maxReplicaCount: 28
+  triggers:
+    - type: aws-sqs-queue
+      metadata:
+        queueURL: https://sqs.us-east-1.amazonaws.com/${AWS_ACCOUNT_ID}/multistate-nexus-jobs-dev
+        queueLength: "10"
+        awsRegion: us-east-1
+        identityOwner: operator
+      authenticationRef:
+        name: multistate-aws-auth

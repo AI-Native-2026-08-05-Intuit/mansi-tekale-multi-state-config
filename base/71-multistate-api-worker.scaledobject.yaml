@@ -1,0 +1,24 @@
+# W6D5 (RUNNABLE on k3d): KEDA scales the tenants.events worker on Kafka
+# consumer-group lag. lagThreshold: "10" means 10 messages of lag per
+# pod; the dev Kafka broker is plaintext, so no TriggerAuthentication is
+# needed here -- the credential-placement discipline lives in the
+# author-and-defend SQS variant, where it actually applies.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: multistate-worker-scaledobject
+spec:
+  scaleTargetRef:
+    name: multistate-api-worker
+  minReplicaCount: 0
+  maxReplicaCount: 28
+  pollingInterval: 15
+  cooldownPeriod: 300
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.multistate-dev.svc.cluster.local:9092
+        consumerGroup: multistate-read-model-builder
+        topic: tenants.events
+        lagThreshold: "10"
+        offsetResetPolicy: latest
