@@ -1,0 +1,40 @@
+# AUTHOR-AND-DEFEND -- do NOT apply to k3d. The otlphttp/tempo exporter
+# below WOULD run locally as-is (it targets the W5D5 Tempo Service
+# already in this cluster); the awsxray exporter is the AWS-native half
+# that needs a real AWS account and cannot be exercised here. Shipping
+# both from one collector keeps the app's OTel SDK vendor-neutral --
+# switching where traces land is a collector-config change, never an
+# app redeploy.
+#
+# Scope note: multistate-api's LLM call goes to the Anthropic API over
+# plain HTTPS, so that hop is an ordinary outbound span Tempo already
+# captures on its own -- X-Ray adds nothing there. X-Ray's actual value
+# is AWS-managed-service segments Tempo cannot see (e.g. an SQS
+# receive/ack on the Task 4 worker variant, or an RDS call instrumented
+# by the AWS SDK), which is the only reason to keep this dual-export
+# rather than dropping the awsxray leg entirely.
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: adot-collector
+  namespace: observability
+spec:
+  image: public.ecr.aws/aws-observability/aws-otel-collector:latest
+  mode: deployment
+  config: |
+    receivers:
+      otlp:
+        protocols:
+          grpc: {endpoint: 0.0.0.0:4317}
+          http: {endpoint: 0.0.0.0:4318}
+    exporters:
+      otlphttp/tempo:
+        endpoint: http://tempo.observability.svc.cluster.local:4318
+        tls: {insecure: true}
+      awsxray:
+        region: us-east-1
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          exporters: [otlphttp/tempo, awsxray]

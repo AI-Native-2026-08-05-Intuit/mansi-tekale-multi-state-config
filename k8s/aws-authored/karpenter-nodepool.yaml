@@ -1,0 +1,36 @@
+# AUTHOR-AND-DEFEND -- do NOT apply to k3d. Karpenter provisions real
+# EC2 capacity; there is no equivalent controller or API on a k3d node,
+# so this is authored and reviewed, never deployed here.
+#
+# limits.cpu/memory caps the node fleet Karpenter will ever provision.
+# The HPA in base/80-multistate-api.hpa.yaml can in principle scale
+# multistate-api to maxReplicas: 28 on a metric-reporting bug or a
+# genuine traffic spike; without a fleet limit, Karpenter would happily
+# keep adding nodes to satisfy that many pods, turning a bad metric into
+# an unbounded EC2 bill. The limit turns that failure mode into "capped
+# and degraded" instead of "runaway spend."
+#
+# consolidateAfter: 600s is set to match the HPA's own
+# scaleDown.stabilizationWindowSeconds: 600 -- so Karpenter doesn't
+# reclaim a node the HPA might still want within the same window. During
+# consolidation Karpenter cordons and drains a node, which is a
+# voluntary disruption; the PodDisruptionBudget in
+# base/81-multistate-api.pdb.yaml (minAvailable: 3) is what actually
+# stops that drain from taking multistate-api below its floor, since
+# Karpenter itself has no SLO awareness.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: multistate-mixed
+spec:
+  template:
+    spec:
+      requirements:
+        - {key: karpenter.sh/capacity-type, operator: In, values: ["spot", "on-demand"]}
+        - {key: node.kubernetes.io/instance-type, operator: In, values: ["m5.large", "m5.xlarge", "m6i.large"]}
+        - {key: topology.kubernetes.io/zone, operator: In, values: ["us-east-1a", "us-east-1b", "us-east-1c"]}
+      nodeClassRef: {name: default}
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 600s
+  limits: {cpu: "200", memory: 400Gi}
