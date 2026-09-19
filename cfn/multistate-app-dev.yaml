@@ -133,6 +133,8 @@ Resources:
       DeletionProtection: true
       MasterUsername: "{{resolve:secretsmanager:multistate/dev/db-master:SecretString:username}}"
       MasterUserPassword: "{{resolve:secretsmanager:multistate/dev/db-master:SecretString:password}}"
+      # Cost-allocation tag taxonomy (W6D4 Task 1): service/env/tenant/feature
+      # scope this RDS instance into the multistate-monthly-cost-dev Budget.
       Tags:
         - Key: Env
           Value: !Ref EnvName
@@ -142,6 +144,12 @@ Resources:
           Value: mansi-tekale
         - Key: env
           Value: sandbox
+        - Key: service
+          Value: multistate
+        - Key: tenant
+          Value: shared
+        - Key: feature
+          Value: summarize-nexus
     DependsOn:
       - DbMasterSecret
 

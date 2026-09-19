@@ -42,7 +42,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -53,7 +53,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
 
   IgwAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -75,7 +75,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
   PublicSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -89,7 +89,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
   PublicSubnetC:
     Type: AWS::EC2::Subnet
     Properties:
@@ -103,7 +103,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
 
   # --- Private subnets (3): NAT-routed, host workloads.
   PrivateSubnetA:
@@ -118,7 +118,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
   PrivateSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -131,7 +131,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
   PrivateSubnetC:
     Type: AWS::EC2::Subnet
     Properties:
@@ -144,7 +144,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
 
   # --- NAT Gateway: always at least one (A); B and C only in HA envs.
   NatEipA:
@@ -158,19 +158,29 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
   NatGatewayA:
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId: !GetAtt NatEipA.AllocationId
       SubnetId: !Ref PublicSubnetA
+      # Cost-allocation tag taxonomy (W6D4 Task 1): service/env/tenant/feature
+      # scope this NAT gateway into the multistate-monthly-cost-dev Budget.
+      # Activate these keys in the Billing console -- activation does NOT
+      # backfill, so tag before you need the history.
       Tags:
         - Key: Name
           Value: !Sub "multistate-${EnvName}-nat-a"
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
+        - Key: service
+          Value: multistate
+        - Key: tenant
+          Value: shared
+        - Key: feature
+          Value: summarize-nexus
 
   NatEipB:
     Type: AWS::EC2::EIP
@@ -184,6 +194,19 @@ Resources:
     Properties:
       AllocationId: !GetAtt NatEipB.AllocationId
       SubnetId: !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub "multistate-${EnvName}-nat-b"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: !Ref EnvName
+        - Key: service
+          Value: multistate
+        - Key: tenant
+          Value: shared
+        - Key: feature
+          Value: summarize-nexus
 
   NatEipC:
     Type: AWS::EC2::EIP
@@ -197,6 +220,19 @@ Resources:
     Properties:
       AllocationId: !GetAtt NatEipC.AllocationId
       SubnetId: !Ref PublicSubnetC
+      Tags:
+        - Key: Name
+          Value: !Sub "multistate-${EnvName}-nat-c"
+        - Key: user
+          Value: mansi-tekale
+        - Key: env
+          Value: !Ref EnvName
+        - Key: service
+          Value: multistate
+        - Key: tenant
+          Value: shared
+        - Key: feature
+          Value: summarize-nexus
 
   # --- Public route table: 0.0.0.0/0 -> IGW. Shared across all 3 AZs.
   PublicRouteTable:
@@ -321,7 +357,7 @@ Resources:
         - Key: user
           Value: mansi-tekale
         - Key: env
-          Value: sandbox
+          Value: !Ref EnvName
 
   # --- VPC Flow Logs: captures accepted/rejected traffic metadata for
   # network forensics and compliance audit trails.
